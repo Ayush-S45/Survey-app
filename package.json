@@ -1,0 +1,21 @@
+{
+  "name": "employee-feedback-system",
+  "version": "1.0.0",
+  "description": "MERN stack online feedback system for HR and managers",
+  "main": "index.js",
+  "scripts": {
+    "setup": "node setup.js",
+    "install-all": "npm install && cd backend && npm install && cd ../frontend/client && npm install",
+    "backend": "cd backend && npm run dev",
+    "frontend": "cd frontend/client && npm start",
+    "dev": "concurrently \"npm run backend\" \"npm run frontend\"",
+    "build": "cd frontend/client && npm run build",
+    "start": "cd backend && npm start"
+  },
+  "keywords": ["feedback", "survey", "hr", "employee", "mern"],
+  "author": "Your Name",
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^8.2.0"
+  }
+} 
