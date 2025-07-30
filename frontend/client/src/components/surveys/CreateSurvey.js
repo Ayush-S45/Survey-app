@@ -63,6 +63,7 @@ const CreateSurvey = () => {
 
   const [success, setSuccess] = useState('');
   const [error, setError] = useState('');
+  const [showConfirmation, setShowConfirmation] = useState(false);
 
   useEffect(() => {
     fetchDepartments();
@@ -71,9 +72,10 @@ const CreateSurvey = () => {
   const fetchDepartments = async () => {
     try {
       const response = await axios.get('/api/departments');
-      setDepartments(response.data);
+      setDepartments(Array.isArray(response.data) ? response.data : response.data.departments || []);
     } catch (error) {
       console.error('Error fetching departments:', error);
+      setDepartments([]);
     }
   };
 
@@ -151,11 +153,67 @@ const CreateSurvey = () => {
     setTags(tags.filter(tag => tag !== tagToRemove));
   };
 
-  const handleSubmit = async e => {
-    e.preventDefault();
+  const handleSubmit = async () => {
     setLoading(true);
     setSuccess('');
     setError('');
+
+    // Validate basic information
+    if (!title.trim()) {
+      setError('Survey title is required');
+      setLoading(false);
+      return;
+    }
+
+    if (!category) {
+      setError('Survey category is required');
+      setLoading(false);
+      return;
+    }
+
+    // Validate questions
+    if (questions.length === 0) {
+      setError('At least one question is required');
+      setLoading(false);
+      return;
+    }
+
+    for (let i = 0; i < questions.length; i++) {
+      const q = questions[i];
+      if (!q.text.trim()) {
+        setError(`Question ${i + 1} must have text`);
+        setLoading(false);
+        return;
+      }
+      
+      if (['multiple', 'checkbox'].includes(q.type)) {
+        const validOptions = q.options.filter(opt => opt.trim());
+        if (validOptions.length < 2) {
+          setError(`Question ${i + 1} must have at least 2 options`);
+          setLoading(false);
+          return;
+        }
+      }
+    }
+
+    // Validate settings
+    if (!settings.startDate || !settings.endDate) {
+      setError('Start date and end date are required');
+      setLoading(false);
+      return;
+    }
+
+    if (new Date(settings.endDate) <= new Date(settings.startDate)) {
+      setError('End date must be after start date');
+      setLoading(false);
+      return;
+    }
+
+    if (settings.estimatedTime < 1) {
+      setError('Estimated time must be at least 1 minute');
+      setLoading(false);
+      return;
+    }
 
     try {
       const surveyData = {
@@ -165,10 +223,10 @@ const CreateSurvey = () => {
         questions: questions.map((q, index) => ({
           question: q.text,
           type: q.type,
-          options: ['multiple', 'checkbox'].includes(q.type) ? q.options.filter(opt => opt.trim()) : undefined,
+          options: ['multiple', 'checkbox'].includes(q.type) ? q.options.filter(opt => opt.trim()) : [],
           required: q.required,
-          description: q.description,
-          placeholder: q.placeholder,
+          description: q.description || '',
+          placeholder: q.placeholder || '',
           order: index + 1
         })),
         targetAudience,
@@ -743,47 +801,45 @@ const CreateSurvey = () => {
   const steps = [
     { number: 1, title: 'Basic Info', description: 'Title, description, and category' },
     { number: 2, title: 'Questions', description: 'Add and configure questions' },
-    { number: 3, title: 'Settings', description: 'Configure survey settings' }
+    { number: 3, title: 'Settings & Create', description: 'Configure settings and create survey' }
   ];
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
+    <div className="max-w-6xl mx-auto space-y-4 px-4 py-2">
       {/* Header */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2">
         <div className="bg-green-100 p-2 rounded-lg">
-          <DocumentPlusIcon className="h-8 w-8 text-green-600" />
+          <DocumentPlusIcon className="h-6 w-6 text-green-600" />
         </div>
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Create New Survey</h1>
-          <p className="text-gray-600">Build engaging surveys to collect valuable feedback</p>
+          <h1 className="text-xl font-bold text-gray-900">Create New Survey</h1>
+          <p className="text-sm text-gray-600">Build engaging surveys to collect valuable feedback</p>
         </div>
       </div>
 
       {/* Progress Steps */}
-      <div className="card">
-        <div className="flex items-center justify-between">
+      <div className="bg-white rounded-lg shadow-sm border p-4">
+        <div className="flex items-center justify-between mb-4">
           {steps.map((step, index) => (
             <div key={step.number} className="flex items-center">
-              <div className="flex items-center">
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-medium ${
-                  activeStep >= step.number
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-200 text-gray-600'
+              <div className={`flex items-center justify-center w-8 h-8 rounded-full border-2 ${
+                activeStep >= step.number 
+                  ? 'bg-blue-600 border-blue-600 text-white' 
+                  : 'border-gray-300 text-gray-500'
+              }`}>
+                {step.number}
+              </div>
+              <div className="ml-2">
+                <p className={`text-sm font-medium ${
+                  activeStep >= step.number ? 'text-blue-600' : 'text-gray-500'
                 }`}>
-                  {step.number}
-                </div>
-                <div className="ml-3">
-                  <p className={`text-sm font-medium ${
-                    activeStep >= step.number ? 'text-blue-600' : 'text-gray-500'
-                  }`}>
-                    {step.title}
-                  </p>
-                  <p className="text-xs text-gray-500">{step.description}</p>
-                </div>
+                  {step.title}
+                </p>
+                <p className="text-xs text-gray-400">{step.description}</p>
               </div>
               {index < steps.length - 1 && (
-                <div className={`w-16 h-0.5 mx-4 ${
-                  activeStep > step.number ? 'bg-blue-600' : 'bg-gray-200'
+                <div className={`w-12 h-0.5 mx-3 ${
+                  activeStep > step.number ? 'bg-blue-600' : 'bg-gray-300'
                 }`} />
               )}
             </div>
@@ -791,68 +847,112 @@ const CreateSurvey = () => {
         </div>
       </div>
 
-      {/* Form Content */}
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="card">
-          {renderStepContent()}
+      {/* Main Form */}
+      <div className="space-y-4">
+        <div className="bg-white rounded-lg shadow-sm border">
+          <div className="p-5">
+            {renderStepContent()}
+          </div>
         </div>
 
         {/* Navigation */}
-        <div className="flex justify-between items-center">
-          <div>
-            {activeStep > 1 && (
-              <button
-                type="button"
-                onClick={() => setActiveStep(activeStep - 1)}
-                className="btn-secondary"
-              >
-                Previous
-              </button>
-            )}
-          </div>
+        <div className="bg-white rounded-lg shadow-sm border p-4">
+          <div className="flex justify-between items-center">
+            <div>
+              {activeStep > 1 && (
+                <button
+                  type="button"
+                  onClick={() => setActiveStep(activeStep - 1)}
+                  className="btn-secondary px-4 py-1.5"
+                >
+                  Previous
+                </button>
+              )}
+            </div>
 
-          <div className="flex items-center gap-4">
-            {success && <div className="text-green-600 text-sm">{success}</div>}
-            {error && <div className="text-red-600 text-sm">{error}</div>}
-            
-            {activeStep < 3 ? (
-              <button
-                type="button"
-                onClick={() => setActiveStep(activeStep + 1)}
-                className="btn-primary"
-                disabled={activeStep === 1 && (!title.trim() || !category)}
-              >
-                Next
-              </button>
-            ) : (
-              <button
-                type="submit"
-                className="btn-primary"
-                disabled={loading}
-              >
-                {loading ? 'Creating Survey...' : 'Create Survey'}
-              </button>
-            )}
+            <div className="flex items-center gap-3">
+              {success && <div className="text-green-600 text-sm font-medium">{success}</div>}
+              {error && <div className="text-red-600 text-sm font-medium">{error}</div>}
+              
+              {activeStep < 3 ? (
+                <button
+                  type="button"
+                  onClick={() => setActiveStep(activeStep + 1)}
+                  className="btn-primary px-4 py-1.5"
+                  disabled={
+                    (activeStep === 1 && (!title.trim() || !category)) ||
+                    (activeStep === 2 && questions.length === 0)
+                  }
+                >
+                  Next Step
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmation(true)}
+                  className="btn-primary px-5 py-1.5"
+                  disabled={loading}
+                >
+                  {loading ? 'Creating Survey...' : 'Create Survey'}
+                </button>
+              )}
+            </div>
           </div>
         </div>
-      </form>
+      </div>
 
       {/* Survey Summary */}
       {activeStep === 3 && (
-        <div className="card bg-blue-50 border-blue-200">
-          <h3 className="text-lg font-semibold text-blue-900 mb-4">Survey Summary</h3>
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <h3 className="text-md font-semibold text-blue-900 mb-3">Survey Summary</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-            <div>
-              <span className="font-medium text-blue-800">Title:</span>
+            <div className="bg-white rounded-lg p-3">
+              <span className="font-medium text-blue-800 block mb-1">Title:</span>
               <p className="text-blue-700">{title || 'Untitled Survey'}</p>
             </div>
-            <div>
-              <span className="font-medium text-blue-800">Questions:</span>
+            <div className="bg-white rounded-lg p-3">
+              <span className="font-medium text-blue-800 block mb-1">Questions:</span>
               <p className="text-blue-700">{questions.length} questions</p>
             </div>
-            <div>
-              <span className="font-medium text-blue-800">Estimated Time:</span>
+            <div className="bg-white rounded-lg p-3">
+              <span className="font-medium text-blue-800 block mb-1">Estimated Time:</span>
               <p className="text-blue-700">{settings.estimatedTime} minutes</p>
+            </div>
+          </div>
+          <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+            <p className="text-sm text-green-800">
+              <strong>Ready to create!</strong> Review your settings above and click "Create Survey" to publish your survey.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Modal */}
+      {showConfirmation && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">
+              Create Survey
+            </h3>
+            <p className="text-gray-600 mb-6">
+              Are you sure you want to create this survey? Once created, it will be available to users based on your settings.
+            </p>
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => setShowConfirmation(false)}
+                className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  setShowConfirmation(false);
+                  handleSubmit();
+                }}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+              >
+                Create Survey
+              </button>
             </div>
           </div>
         </div>

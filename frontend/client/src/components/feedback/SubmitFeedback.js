@@ -20,7 +20,7 @@ const SubmitFeedback = () => {
   const fetchSurvey = async () => {
     try {
       const response = await axios.get(`/api/surveys/${surveyId}`);
-      setSurvey(response.data);
+      setSurvey(response.data.survey || response.data);
       
       // Initialize answers object
       const initialAnswers = {};
@@ -29,8 +29,8 @@ const SubmitFeedback = () => {
       });
       setAnswers(initialAnswers);
     } catch (error) {
-      toast.error('Failed to load survey');
-      navigate('/surveys');
+      console.error('Error fetching survey:', error);
+      setSurvey(null);
     } finally {
       setLoading(false);
     }

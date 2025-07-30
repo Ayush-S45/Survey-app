@@ -23,28 +23,44 @@ const Login = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError('');
     setLoading(true);
-    // Demo admin shortcut
-    if ((formData.email === 'demo' || formData.email === 'demo@gmail.com') && formData.password === '123456') {
-      setUser({
-        _id: 'demo-admin',
-        email: formData.email,
-        firstName: 'Demo',
-        lastName: 'Admin',
-        role: 'admin',
-      });
-      navigate('/dashboard');
+    setError('');
+
+    try {
+      // Demo users - check these first
+      if (formData.email === 'user@gmail.com' && formData.password === '123456') {
+        const testUser = {
+          _id: 'demo-user-123',
+          email: 'user@gmail.com',
+          firstName: 'Demo',
+          lastName: 'User',
+          role: 'employee',
+          employeeId: 'EMP001',
+          position: 'Software Developer',
+          department: 'Engineering'
+        };
+        
+        setUser(testUser);
+        localStorage.setItem('token', 'demo-token-123');
+        localStorage.setItem('user', JSON.stringify(testUser));
+        navigate('/dashboard');
+        return;
+      }
+
+      // Try actual backend login
+      const result = await login(formData.email, formData.password);
+      if (result.success) {
+        navigate('/dashboard');
+      } else {
+        setError(result.error || 'Login failed');
+      }
+
+    } catch (err) {
+      setError('Login failed - check console for details');
+      console.error('Login error:', err);
+    } finally {
       setLoading(false);
-      return;
     }
-    const result = await login(formData.email, formData.password);
-    if (result.success) {
-      navigate('/');
-    } else {
-      setError(result.message || 'Invalid credentials');
-    }
-    setLoading(false);
   };
 
   return (

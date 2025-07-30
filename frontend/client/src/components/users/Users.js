@@ -1,17 +1,20 @@
+
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { 
-  PlusIcon, 
-  EyeIcon, 
-  PencilIcon, 
-  TrashIcon,
-  UserIcon,
+import {
   MagnifyingGlassIcon,
-  FunnelIcon,
+  PlusIcon,
+  PencilIcon,
+  TrashIcon,
+  EyeIcon,
+  UserPlusIcon,
+  ChevronDownIcon,
+  AdjustmentsHorizontalIcon,
   CheckCircleIcon,
   XCircleIcon,
-  ShieldCheckIcon
+  ShieldCheckIcon,
+  UserIcon
 } from '@heroicons/react/24/outline';
 import axios from 'axios';
 import { toast } from 'react-hot-toast';
@@ -19,13 +22,12 @@ import { toast } from 'react-hot-toast';
 const Users = () => {
   const { user } = useAuth();
   const [users, setUsers] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [roleFilter, setRoleFilter] = useState('all');
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [departmentFilter, setDepartmentFilter] = useState('all');
-  const [departments, setDepartments] = useState([]);
+  const [selectedRole, setSelectedRole] = useState('all');
+  const [selectedDepartment, setSelectedDepartment] = useState('all');
   const [selectedUsers, setSelectedUsers] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [departments, setDepartments] = useState([]);
   const [showBulkActions, setShowBulkActions] = useState(false);
 
   useEffect(() => {
@@ -36,45 +38,56 @@ const Users = () => {
   const fetchUsers = async () => {
     try {
       const response = await axios.get('/api/users');
-      setUsers(response.data.users || response.data);
+      setUsers(Array.isArray(response.data) ? response.data : response.data.users || []);
     } catch (error) {
       console.error('Error fetching users:', error);
-      toast.error('Failed to fetch users');
+      setUsers([]);
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
   const fetchDepartments = async () => {
     try {
       const response = await axios.get('/api/departments');
-      setDepartments(response.data);
+      setDepartments(Array.isArray(response.data) ? response.data : response.data.departments || []);
     } catch (error) {
       console.error('Error fetching departments:', error);
+      setDepartments([]);
     }
   };
 
-  const handleDelete = async (userId, userName) => {
-    if (window.confirm(`Are you sure you want to deactivate ${userName}? This action can be reversed later.`)) {
+  const handleDelete = async (userId) => {
+    if (window.confirm('Are you sure you want to delete this user?')) {
       try {
         await axios.delete(`/api/users/${userId}`);
-        toast.success('User deactivated successfully');
+        toast.success('User deleted successfully');
         fetchUsers();
       } catch (error) {
-        console.error('Error deactivating user:', error);
-        toast.error(error.response?.data?.message || 'Failed to deactivate user');
+        console.error('Error deleting user:', error);
+        toast.error('Failed to delete user');
       }
     }
   };
 
-  const handleActivateUser = async (userId, userName) => {
+  const fetchManagers = async () => {
     try {
-      await axios.put(`/api/users/${userId}`, { isActive: true });
-      toast.success(`${userName} activated successfully`);
+      const response = await axios.get('/api/users?role=manager');
+      return response.data.users || response.data;
+    } catch (error) {
+      console.error('Error fetching managers:', error);
+      return [];
+    }
+  };
+
+  const handleActivateUser = async (userId, isActive) => {
+    try {
+      await axios.patch(`/api/users/${userId}`, { isActive: !isActive });
+      toast.success(`User ${!isActive ? 'activated' : 'deactivated'} successfully`);
       fetchUsers();
     } catch (error) {
-      console.error('Error activating user:', error);
-      toast.error('Failed to activate user');
+      console.error('Error updating user status:', error);
+      toast.error('Failed to update user status');
     }
   };
 
@@ -84,26 +97,31 @@ const Users = () => {
       return;
     }
 
-    const confirmMessage = action === 'activate' 
-      ? `Activate ${selectedUsers.length} selected users?`
-      : `Deactivate ${selectedUsers.length} selected users?`;
-
-    if (window.confirm(confirmMessage)) {
-      try {
-        const promises = selectedUsers.map(userId => 
-          action === 'activate' 
-            ? axios.put(`/api/users/${userId}`, { isActive: true })
-            : axios.delete(`/api/users/${userId}`)
-        );
-        
-        await Promise.all(promises);
-        toast.success(`${selectedUsers.length} users ${action}d successfully`);
-        setSelectedUsers([]);
-        setShowBulkActions(false);
-        fetchUsers();
-      } catch (error) {
-        toast.error(`Failed to ${action} users`);
+    try {
+      if (action === 'delete') {
+        if (window.confirm(`Are you sure you want to delete ${selectedUsers.length} users?`)) {
+          await Promise.all(selectedUsers.map(userId => 
+            axios.delete(`/api/users/${userId}`)
+          ));
+          toast.success('Users deleted successfully');
+        }
+      } else if (action === 'activate') {
+        await Promise.all(selectedUsers.map(userId => 
+          axios.patch(`/api/users/${userId}`, { isActive: true })
+        ));
+        toast.success('Users activated successfully');
+      } else if (action === 'deactivate') {
+        await Promise.all(selectedUsers.map(userId => 
+          axios.patch(`/api/users/${userId}`, { isActive: false })
+        ));
+        toast.success('Users deactivated successfully');
       }
+      
+      setSelectedUsers([]);
+      fetchUsers();
+    } catch (error) {
+      console.error('Error performing bulk action:', error);
+      toast.error('Failed to perform bulk action');
     }
   };
 
@@ -119,7 +137,7 @@ const Users = () => {
     if (selectedUsers.length === filteredUsers.length) {
       setSelectedUsers([]);
     } else {
-      setSelectedUsers(filteredUsers.map(u => u._id));
+      setSelectedUsers(filteredUsers.map(user => user._id));
     }
   };
 
@@ -128,13 +146,10 @@ const Users = () => {
                          u.lastName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          u.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          u.employeeId?.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesRole = roleFilter === 'all' || u.role === roleFilter;
-    const matchesStatus = statusFilter === 'all' || 
-                         (statusFilter === 'active' && u.isActive) ||
-                         (statusFilter === 'inactive' && !u.isActive);
-    const matchesDepartment = departmentFilter === 'all' || u.department?._id === departmentFilter;
+    const matchesRole = selectedRole === 'all' || u.role === selectedRole;
+    const matchesDepartment = selectedDepartment === 'all' || u.department === selectedDepartment;
     
-    return matchesSearch && matchesRole && matchesStatus && matchesDepartment;
+    return matchesSearch && matchesRole && matchesDepartment;
   });
 
   const getRoleBadgeColor = (role) => {
@@ -148,7 +163,7 @@ const Users = () => {
 
   const canManageUsers = ['admin', 'hr'].includes(user?.role);
 
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="flex justify-center items-center h-64">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
@@ -159,127 +174,114 @@ const Users = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">User Management</h1>
-          <p className="text-gray-600">Manage employee accounts and permissions</p>
-        </div>
-        {canManageUsers && (
-          <div className="flex gap-3">
-            {showBulkActions && selectedUsers.length > 0 && (
-              <div className="flex gap-2">
-                <button
-                  onClick={() => handleBulkAction('activate')}
-                  className="bg-green-600 text-white px-3 py-2 rounded-md hover:bg-green-700 text-sm"
-                >
-                  Activate Selected ({selectedUsers.length})
-                </button>
-                <button
-                  onClick={() => handleBulkAction('deactivate')}
-                  className="bg-red-600 text-white px-3 py-2 rounded-md hover:bg-red-700 text-sm"
-                >
-                  Deactivate Selected ({selectedUsers.length})
-                </button>
-              </div>
-            )}
-            <Link to="/users/add" className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 flex items-center">
+      <div className="bg-white/80 backdrop-blur-md rounded-2xl p-6 shadow-xl border border-gray-200/50">
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+              User Management
+            </h1>
+            <p className="text-gray-600 mt-1">Manage users and their permissions</p>
+          </div>
+          {canManageUsers && (
+            <Link
+              to="/users/add"
+              className="inline-flex items-center px-4 py-2 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-xl hover:from-blue-600 hover:to-purple-700 transition-all duration-200 shadow-lg hover:shadow-xl"
+            >
               <PlusIcon className="h-5 w-5 mr-2" />
               Add User
             </Link>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
-      {/* Filters */}
-      <div className="bg-white rounded-lg shadow p-6">
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-          <div className="md:col-span-2">
-            <div className="relative">
-              <MagnifyingGlassIcon className="h-5 w-5 absolute left-3 top-3 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search users..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
+      {/* Search and Filters */}
+      <div className="bg-white/80 backdrop-blur-md rounded-2xl p-6 shadow-xl border border-gray-200/50">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="relative">
+            <MagnifyingGlassIcon className="h-5 w-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search users..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+            />
           </div>
-          <div>
-            <select
-              value={roleFilter}
-              onChange={(e) => setRoleFilter(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="all">All Roles</option>
-              <option value="employee">Employee</option>
-              <option value="manager">Manager</option>
-              <option value="hr">HR</option>
-              <option value="admin">Admin</option>
-            </select>
-          </div>
-          <div>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="all">All Status</option>
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-            </select>
-          </div>
-          <div>
-            <select
-              value={departmentFilter}
-              onChange={(e) => setDepartmentFilter(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="all">All Departments</option>
-              {departments.map(dept => (
-                <option key={dept._id} value={dept._id}>{dept.name}</option>
-              ))}
-            </select>
-          </div>
+          
+          <select
+            value={selectedRole}
+            onChange={(e) => setSelectedRole(e.target.value)}
+            className="px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+          >
+            <option value="all">All Roles</option>
+            <option value="admin">Admin</option>
+            <option value="hr">HR</option>
+            <option value="manager">Manager</option>
+            <option value="employee">Employee</option>
+          </select>
+
+          <select
+            value={selectedDepartment}
+            onChange={(e) => setSelectedDepartment(e.target.value)}
+            className="px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+          >
+            <option value="all">All Departments</option>
+            {departments.map(dept => (
+              <option key={dept._id} value={dept.name}>{dept.name}</option>
+            ))}
+          </select>
         </div>
-        
-        {canManageUsers && (
-          <div className="mt-4 flex items-center gap-4">
-            <button
-              onClick={() => setShowBulkActions(!showBulkActions)}
-              className="text-sm text-blue-600 hover:text-blue-800 flex items-center"
-            >
-              <FunnelIcon className="h-4 w-4 mr-1" />
-              {showBulkActions ? 'Hide' : 'Show'} Bulk Actions
-            </button>
-            <span className="text-sm text-gray-500">
-              {filteredUsers.length} users found
-            </span>
+
+        {/* Bulk Actions */}
+        {canManageUsers && selectedUsers.length > 0 && (
+          <div className="mt-4 p-4 bg-blue-50 rounded-xl border border-blue-200">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-blue-800">
+                {selectedUsers.length} user(s) selected
+              </span>
+              <div className="flex space-x-2">
+                <button
+                  onClick={() => handleBulkAction('activate')}
+                  className="px-3 py-1 bg-green-500 text-white rounded-lg text-sm hover:bg-green-600 transition-colors"
+                >
+                  Activate
+                </button>
+                <button
+                  onClick={() => handleBulkAction('deactivate')}
+                  className="px-3 py-1 bg-yellow-500 text-white rounded-lg text-sm hover:bg-yellow-600 transition-colors"
+                >
+                  Deactivate
+                </button>
+                <button
+                  onClick={() => handleBulkAction('delete')}
+                  className="px-3 py-1 bg-red-500 text-white rounded-lg text-sm hover:bg-red-600 transition-colors"
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>
 
       {/* Users Table */}
-      <div className="bg-white rounded-lg shadow overflow-hidden">
+      <div className="bg-white/80 backdrop-blur-md rounded-2xl shadow-xl border border-gray-200/50 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+            <thead className="bg-gray-50/80">
               <tr>
-                {canManageUsers && showBulkActions && (
+                {canManageUsers && (
                   <th className="px-6 py-3 text-left">
                     <input
                       type="checkbox"
                       checked={selectedUsers.length === filteredUsers.length && filteredUsers.length > 0}
                       onChange={selectAllUsers}
-                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                     />
                   </th>
                 )}
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   User
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Employee ID
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Role
@@ -295,51 +297,52 @@ const Users = () => {
                 </th>
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {filteredUsers.map((u) => (
-                <tr key={u._id} className="hover:bg-gray-50">
-                  {canManageUsers && showBulkActions && (
+            <tbody className="bg-white/50 divide-y divide-gray-200">
+              {filteredUsers.map((user) => (
+                <tr key={user._id} className="hover:bg-gray-50/80 transition-colors">
+                  {canManageUsers && (
                     <td className="px-6 py-4">
                       <input
                         type="checkbox"
-                        checked={selectedUsers.includes(u._id)}
-                        onChange={() => toggleUserSelection(u._id)}
-                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                        checked={selectedUsers.includes(user._id)}
+                        onChange={() => toggleUserSelection(user._id)}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                       />
                     </td>
                   )}
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
-                      <div className="flex-shrink-0 h-10 w-10">
-                        <div className="h-10 w-10 rounded-full bg-gray-300 flex items-center justify-center">
-                          <UserIcon className="h-6 w-6 text-gray-600" />
-                        </div>
+                      <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center mr-4">
+                        <span className="text-white font-bold text-sm">
+                          {user.name?.charAt(0) || user.firstName?.charAt(0) || 'U'}
+                        </span>
                       </div>
-                      <div className="ml-4">
+                      <div>
                         <div className="text-sm font-medium text-gray-900">
-                          {u.firstName} {u.lastName}
+                          {user.name || `${user.firstName} ${user.lastName}`}
                         </div>
-                        <div className="text-sm text-gray-500">{u.email}</div>
+                        <div className="text-sm text-gray-500">{user.email}</div>
+                        {user.employeeId && (
+                          <div className="text-xs text-gray-400">ID: {user.employeeId}</div>
+                        )}
                       </div>
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {u.employeeId}
-                  </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getRoleBadgeColor(u.role)}`}>
-                      {u.role === 'admin' && <ShieldCheckIcon className="h-3 w-3 mr-1" />}
-                      {u.role.charAt(0).toUpperCase() + u.role.slice(1)}
+                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getRoleBadgeColor(user.role)}`}>
+                      {user.role}
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {u.department?.name || 'Not assigned'}
+                    {user.department || 'Not assigned'}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                      u.isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                      user.isActive 
+                        ? 'bg-green-100 text-green-800' 
+                        : 'bg-red-100 text-red-800'
                     }`}>
-                      {u.isActive ? (
+                      {user.isActive ? (
                         <>
                           <CheckCircleIcon className="h-3 w-3 mr-1" />
                           Active
@@ -353,40 +356,41 @@ const Users = () => {
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                    <div className="flex gap-2">
+                    <div className="flex space-x-2">
                       <Link
-                        to={`/users/${u._id}`}
-                        className="text-blue-600 hover:text-blue-900"
-                        title="View User"
+                        to={`/users/${user._id}`}
+                        className="text-blue-600 hover:text-blue-900 transition-colors"
+                        title="View"
                       >
                         <EyeIcon className="h-4 w-4" />
                       </Link>
                       {canManageUsers && (
                         <>
                           <Link
-                            to={`/users/${u._id}/edit`}
-                            className="text-green-600 hover:text-green-900"
-                            title="Edit User"
+                            to={`/users/edit/${user._id}`}
+                            className="text-green-600 hover:text-green-900 transition-colors"
+                            title="Edit"
                           >
                             <PencilIcon className="h-4 w-4" />
                           </Link>
-                          {u.isActive ? (
-                            <button
-                              onClick={() => handleDelete(u._id, `${u.firstName} ${u.lastName}`)}
-                              className="text-red-600 hover:text-red-900"
-                              title="Deactivate User"
-                            >
-                              <TrashIcon className="h-4 w-4" />
-                            </button>
-                          ) : (
-                            <button
-                              onClick={() => handleActivateUser(u._id, `${u.firstName} ${u.lastName}`)}
-                              className="text-green-600 hover:text-green-900"
-                              title="Activate User"
-                            >
-                              <CheckCircleIcon className="h-4 w-4" />
-                            </button>
-                          )}
+                          <button
+                            onClick={() => handleActivateUser(user._id, user.isActive)}
+                            className={`${
+                              user.isActive 
+                                ? 'text-yellow-600 hover:text-yellow-900' 
+                                : 'text-green-600 hover:text-green-900'
+                            } transition-colors`}
+                            title={user.isActive ? 'Deactivate' : 'Activate'}
+                          >
+                            <ShieldCheckIcon className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(user._id)}
+                            className="text-red-600 hover:text-red-900 transition-colors"
+                            title="Delete"
+                          >
+                            <TrashIcon className="h-4 w-4" />
+                          </button>
                         </>
                       )}
                     </div>
@@ -398,9 +402,25 @@ const Users = () => {
         </div>
 
         {filteredUsers.length === 0 && (
-          <div className="text-center py-8 text-gray-500">
-            <UserIcon className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-            <p>No users found matching your criteria.</p>
+          <div className="text-center py-12">
+            <UserIcon className="mx-auto h-12 w-12 text-gray-400" />
+            <h3 className="mt-2 text-sm font-medium text-gray-900">No users found</h3>
+            <p className="mt-1 text-sm text-gray-500">
+              {searchTerm || selectedRole !== 'all' || selectedDepartment !== 'all'
+                ? 'Try adjusting your search or filter criteria.'
+                : 'Get started by adding a new user.'}
+            </p>
+            {canManageUsers && (
+              <div className="mt-6">
+                <Link
+                  to="/users/add"
+                  className="inline-flex items-center px-4 py-2 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-xl hover:from-blue-600 hover:to-purple-700 transition-all duration-200 shadow-lg hover:shadow-xl"
+                >
+                  <PlusIcon className="h-5 w-5 mr-2" />
+                  Add User
+                </Link>
+              </div>
+            )}
           </div>
         )}
       </div>

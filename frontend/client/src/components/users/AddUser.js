@@ -26,7 +26,6 @@ const AddUser = () => {
   const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
-    // Check if user has permission to add users
     if (!['admin', 'hr'].includes(currentUser?.role)) {
       toast.error('You do not have permission to add users');
       navigate('/users');
@@ -40,19 +39,20 @@ const AddUser = () => {
   const fetchDepartments = async () => {
     try {
       const response = await axios.get('/api/departments');
-      setDepartments(response.data);
+      setDepartments(Array.isArray(response.data) ? response.data : response.data.departments || []);
     } catch (error) {
       console.error('Error fetching departments:', error);
-      toast.error('Failed to load departments');
+      setDepartments([]);
     }
   };
 
   const fetchManagers = async () => {
     try {
       const response = await axios.get('/api/users?role=manager');
-      setManagers(response.data.users || []);
+      setManagers(Array.isArray(response.data) ? response.data : response.data.managers || []);
     } catch (error) {
       console.error('Error fetching managers:', error);
+      setManagers([]);
     }
   };
 

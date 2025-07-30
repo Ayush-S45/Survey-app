@@ -81,7 +81,7 @@ router.post('/', [
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { name, description, head, color } = req.body;
+    const { name, description, head, color, category } = req.body;
 
     // Check if department already exists
     const existingDept = await Department.findOne({ name });
@@ -101,7 +101,8 @@ router.post('/', [
       name,
       description,
       head,
-      color
+      color,
+      category // include category
     });
 
     await department.save();
@@ -135,7 +136,7 @@ router.put('/:id', [
       return res.status(404).json({ message: 'Department not found' });
     }
 
-    const { name, description, head, color, isActive } = req.body;
+    const { name, description, head, color, isActive, category } = req.body;
 
     // Check if name is being changed and if it already exists
     if (name !== department.name) {
@@ -155,7 +156,7 @@ router.put('/:id', [
 
     const updatedDepartment = await Department.findByIdAndUpdate(
       req.params.id,
-      { name, description, head, color, isActive },
+      { name, description, head, color, isActive, category }, // include category
       { new: true, runValidators: true }
     ).populate('head', 'firstName lastName email');
 

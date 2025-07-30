@@ -14,6 +14,7 @@ import { toast } from 'react-hot-toast';
 const Complaints = () => {
   const { user } = useAuth();
   const [complaints, setComplaints] = useState([]);
+  const [sentComplaints, setSentComplaints] = useState([]);
   const [newComplaint, setNewComplaint] = useState('');
   const [complaintType, setComplaintType] = useState('survey');
   const [relatedSurvey, setRelatedSurvey] = useState('');
@@ -22,6 +23,18 @@ const Complaints = () => {
   const [recipients, setRecipients] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [complaintTitle, setComplaintTitle] = useState('');
+  const [complaintDescription, setComplaintDescription] = useState('');
+  const [complaintCategory, setComplaintCategory] = useState('workplace');
+  const [activeTab, setActiveTab] = useState('received');
+
+  // Add employee-related complaint type
+  const complaintTypes = [
+    { value: 'employee-feedback', label: 'Employee Feedback Issue' },
+    { value: 'survey', label: 'Survey Issue' },
+    { value: 'workplace', label: 'Workplace Issue' },
+    { value: 'other', label: 'Other' }
+  ];
 
   useEffect(() => {
     fetchComplaints();
@@ -31,8 +44,12 @@ const Complaints = () => {
 
   const fetchComplaints = async () => {
     try {
-      const response = await axios.get('/api/complaints');
-      setComplaints(response.data);
+      const [receivedResponse, sentResponse] = await Promise.all([
+        axios.get('/api/complaints'),
+        axios.get('/api/complaints/sent')
+      ]);
+      setComplaints(receivedResponse.data);
+      setSentComplaints(sentResponse.data);
     } catch (error) {
       console.error('Error fetching complaints:', error);
     } finally {
@@ -43,15 +60,17 @@ const Complaints = () => {
   const fetchSurveys = async () => {
     try {
       const response = await axios.get('/api/surveys');
-      setSurveys(response.data);
+      // Handle both array and object responses
+      setSurveys(Array.isArray(response.data) ? response.data : response.data.surveys || []);
     } catch (error) {
       console.error('Error fetching surveys:', error);
+      setSurveys([]); // fallback to empty array on error
     }
   };
 
   const fetchRecipients = async () => {
     try {
-      const response = await axios.get('/api/users/recipients');
+      const response = await axios.get('/api/users/complaint-recipients');
       setRecipients(response.data);
     } catch (error) {
       console.error('Error fetching recipients:', error);
@@ -60,26 +79,48 @@ const Complaints = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!newComplaint.trim()) return;
+    if (!complaintTitle.trim() || !complaintDescription.trim() || !newComplaint.trim()) return;
 
     try {
       const complaintData = {
+        title: complaintTitle,
+        description: complaintDescription,
         content: newComplaint,
         type: complaintType,
         relatedSurvey: relatedSurvey || null,
-        assignedTo: assignedTo || null
+        assignedTo: assignedTo || null,
+        category: complaintCategory // Always include category
       };
 
       await axios.post('/api/complaints', complaintData);
       toast.success('Complaint submitted and message sent successfully!');
+      setComplaintTitle('');
+      setComplaintDescription('');
       setNewComplaint('');
       setComplaintType('survey');
       setRelatedSurvey('');
       setAssignedTo('');
+      setComplaintCategory('workplace');
       setShowForm(false);
       fetchComplaints();
     } catch (error) {
+      console.error('Error submitting complaint:', error);
       toast.error('Failed to submit complaint');
+    }
+  };
+
+  const deleteComplaint = async (complaintId) => {
+    if (!window.confirm('Are you sure you want to delete this complaint?')) {
+      return;
+    }
+
+    try {
+      await axios.delete(`/api/complaints/${complaintId}`);
+      toast.success('Complaint deleted successfully!');
+      fetchComplaints();
+    } catch (error) {
+      console.error('Error deleting complaint:', error);
+      toast.error('Failed to delete complaint');
     }
   };
 
@@ -156,7 +197,49 @@ const Complaints = () => {
           <div className="p-6 border-b border-gray-200 bg-red-50">
             <h2 className="text-lg font-semibold text-gray-900 mb-4">Submit New Complaint</h2>
             <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Title
+                  </label>
+                  <input
+                    type="text"
+                    value={complaintTitle}
+                    onChange={e => setComplaintTitle(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500"
+                    placeholder="Title"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Description
+                  </label>
+                  <input
+                    type="text"
+                    value={complaintDescription}
+                    onChange={e => setComplaintDescription(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500"
+                    placeholder="Description"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Category
+                  </label>
+                  <select
+                    value={complaintCategory}
+                    onChange={(e) => setComplaintCategory(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500"
+                  >
+                    <option value="harassment">Harassment</option>
+                    <option value="discrimination">Discrimination</option>
+                    <option value="workplace">Workplace</option>
+                    <option value="management">Management</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Complaint Type
@@ -203,7 +286,8 @@ const Complaints = () => {
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500"
                     >
                       <option value="">Select a survey</option>
-                      {surveys.map((survey) => (
+                      {console.log('surveys:', surveys)}
+                      {Array.isArray(surveys) && surveys.map((survey) => (
                         <option key={survey._id} value={survey._id}>
                           {survey.title}
                         </option>
@@ -247,77 +331,187 @@ const Complaints = () => {
           </div>
         )}
 
+        {/* Tabs */}
+        <div className="border-b border-gray-200">
+          <nav className="flex space-x-8 px-6">
+            <button
+              onClick={() => setActiveTab('received')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'received'
+                  ? 'border-red-500 text-red-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Received/Assigned ({complaints.length})
+            </button>
+            <button
+              onClick={() => setActiveTab('sent')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'sent'
+                  ? 'border-red-500 text-red-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Sent Complaints ({sentComplaints.length})
+            </button>
+          </nav>
+        </div>
+
         {/* Complaints List */}
         <div className="p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Your Complaints</h2>
-          
-          {complaints.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">
-              <ExclamationTriangleIcon className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-              <p>No complaints submitted yet.</p>
-              <p className="text-sm">Click "New Complaint" to submit your first complaint.</p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {complaints.map((complaint) => (
-                <div key={complaint._id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex items-center space-x-3">
-                      {getComplaintIcon(complaint.type)}
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${getComplaintTypeColor(complaint.type)}`}>
-                        {complaint.type.charAt(0).toUpperCase() + complaint.type.slice(1)}
-                      </span>
-                      {complaint.assignedTo && (
-                        <div className="flex items-center text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
-                          <UserIcon className="h-3 w-3 mr-1" />
-                          Assigned to: {complaint.assignedTo.firstName} {complaint.assignedTo.lastName}
+          {activeTab === 'received' ? (
+            <>
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">
+                {user.role === 'employee' ? 'Your Complaints' : 'Complaints Assigned to You'}
+              </h2>
+              
+              {complaints.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  <ExclamationTriangleIcon className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                  <p>No complaints found.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {complaints.map((complaint) => (
+                    <div key={complaint._id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex items-center space-x-3">
+                          {getComplaintIcon(complaint.type)}
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${getComplaintTypeColor(complaint.type)}`}>
+                            {complaint.type && typeof complaint.type === 'string'
+                              ? complaint.type.charAt(0).toUpperCase() + complaint.type.slice(1)
+                              : 'Unknown'}
+                          </span>
+                          {complaint.assignedTo && (
+                            <div className="flex items-center text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                              <UserIcon className="h-3 w-3 mr-1" />
+                              Assigned to: {complaint.assignedTo.firstName} {complaint.assignedTo.lastName}
+                            </div>
+                          )}
+                          {complaint.relatedSurvey && (
+                            <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                              Survey: {complaint.relatedSurvey.title}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(complaint.status)}`}>
+                            {complaint.status && typeof complaint.status === 'string'
+                              ? complaint.status.replace('-', ' ').charAt(0).toUpperCase() + complaint.status.replace('-', ' ').slice(1)
+                              : 'Unknown'}
+                          </span>
+                          <div className="flex items-center text-xs text-gray-500">
+                            <ClockIcon className="h-4 w-4 mr-1" />
+                            {new Date(complaint.createdAt).toLocaleDateString()}
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <p className="text-gray-700 mb-3">{complaint.content}</p>
+                      
+                      {complaint.priority && (
+                        <div className={`inline-block px-2 py-1 rounded text-xs font-medium mb-2 ${
+                          complaint.priority === 'high' 
+                            ? 'bg-red-100 text-red-800' 
+                            : complaint.priority === 'medium'
+                            ? 'bg-yellow-100 text-yellow-800'
+                            : 'bg-green-100 text-green-800'
+                        }`}>
+                          Priority: {complaint.priority}
                         </div>
                       )}
-                      {complaint.relatedSurvey && (
-                        <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
-                          Survey: {complaint.relatedSurvey.title}
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(complaint.status)}`}>
-                        {complaint.status.replace('-', ' ').charAt(0).toUpperCase() + complaint.status.replace('-', ' ').slice(1)}
-                      </span>
-                      <div className="flex items-center text-xs text-gray-500">
-                        <ClockIcon className="h-4 w-4 mr-1" />
-                        {new Date(complaint.createdAt).toLocaleDateString()}
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <p className="text-gray-700 mb-3">{complaint.content}</p>
-                  
-                  {complaint.priority && (
-                    <div className={`inline-block px-2 py-1 rounded text-xs font-medium mb-2 ${
-                      complaint.priority === 'high' 
-                        ? 'bg-red-100 text-red-800' 
-                        : complaint.priority === 'medium'
-                        ? 'bg-yellow-100 text-yellow-800'
-                        : 'bg-green-100 text-green-800'
-                    }`}>
-                      Priority: {complaint.priority}
-                    </div>
-                  )}
 
-                  {complaint.adminResponse && (
-                    <div className="mt-3 p-3 bg-blue-50 rounded-md border-l-4 border-blue-400">
-                      <p className="text-sm font-medium text-blue-900">Response:</p>
-                      <p className="text-sm text-blue-800 mt-1">{complaint.adminResponse}</p>
-                      {complaint.respondedAt && (
-                        <p className="text-xs text-blue-600 mt-2">
-                          Responded on: {new Date(complaint.respondedAt).toLocaleDateString()}
-                        </p>
+                      {complaint.adminResponse && (
+                        <div className="mt-3 p-3 bg-blue-50 rounded-md border-l-4 border-blue-400">
+                          <p className="text-sm font-medium text-blue-900">Response:</p>
+                          <p className="text-sm text-blue-800 mt-1">{complaint.adminResponse}</p>
+                          {complaint.respondedAt && (
+                            <p className="text-xs text-blue-600 mt-2">
+                              Responded on: {new Date(complaint.respondedAt).toLocaleDateString()}
+                            </p>
+                          )}
+                        </div>
                       )}
                     </div>
-                  )}
+                  ))}
                 </div>
-              ))}
-            </div>
+              )}
+            </>
+          ) : (
+            <>
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">Your Sent Complaints</h2>
+              
+              {sentComplaints.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  <ExclamationTriangleIcon className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                  <p>No complaints submitted yet.</p>
+                  <p className="text-sm">Click "New Complaint" to submit your first complaint.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {sentComplaints.map((complaint) => (
+                    <div key={complaint._id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex items-center space-x-3">
+                          {getComplaintIcon(complaint.type)}
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${getComplaintTypeColor(complaint.type)}`}>
+                            {complaint.type && typeof complaint.type === 'string'
+                              ? complaint.type.charAt(0).toUpperCase() + complaint.type.slice(1)
+                              : 'Unknown'}
+                          </span>
+                          {complaint.assignedTo && (
+                            <div className="flex items-center text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                              <UserIcon className="h-3 w-3 mr-1" />
+                              Assigned to: {complaint.assignedTo.firstName} {complaint.assignedTo.lastName}
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(complaint.status)}`}>
+                            {complaint.status && typeof complaint.status === 'string'
+                              ? complaint.status.replace('-', ' ').charAt(0).toUpperCase() + complaint.status.replace('-', ' ').slice(1)
+                              : 'Unknown'}
+                          </span>
+                          <button
+                            onClick={() => deleteComplaint(complaint._id)}
+                            className="text-red-600 hover:text-red-800 text-sm font-medium"
+                          >
+                            Delete
+                          </button>
+                          <div className="flex items-center text-xs text-gray-500">
+                            <ClockIcon className="h-4 w-4 mr-1" />
+                            {new Date(complaint.createdAt).toLocaleDateString()}
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <p className="text-gray-700 mb-3">{complaint.content}</p>
+                      
+                      {complaint.priority && (
+                        <div className={`inline-block px-2 py-1 rounded text-xs font-medium mb-2 ${
+                          complaint.priority === 'high' 
+                            ? 'bg-red-100 text-red-800' 
+                            : complaint.priority === 'medium'
+                            ? 'bg-yellow-100 text-yellow-800'
+                            : 'bg-green-100 text-green-800'
+                        }`}>
+                          Priority: {complaint.priority}
+                        </div>
+                      )}
+
+                      {complaint.resolution && (
+                        <div className="bg-green-50 border-l-4 border-green-400 p-3 mt-3">
+                          <p className="text-sm font-medium text-green-900 mb-1">
+                            Resolution by {complaint.resolvedBy?.firstName} {complaint.resolvedBy?.lastName}:
+                          </p>
+                          <p className="text-green-800">{complaint.resolution}</p>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -326,5 +520,6 @@ const Complaints = () => {
 };
 
 export default Complaints;
+
 
 

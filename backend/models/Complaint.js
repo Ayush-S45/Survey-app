@@ -1,57 +1,59 @@
 const mongoose = require('mongoose');
 
 const complaintSchema = new mongoose.Schema({
+  title: {
+    type: String,
+    required: true,
+    trim: true
+  },
+  description: {
+    type: String,
+    required: true,
+    trim: true
+  },
+  category: {
+    type: String,
+    enum: ['harassment', 'discrimination', 'workplace', 'management', 'other'],
+    required: true
+  },
+  priority: {
+    type: String,
+    enum: ['low', 'medium', 'high', 'urgent'],
+    default: 'medium'
+  },
+  status: {
+    type: String,
+    enum: ['open', 'investigating', 'resolved', 'closed'],
+    default: 'open'
+  },
   submittedBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     required: true
   },
-  content: {
-    type: String,
-    required: true,
-    trim: true
-  },
-  type: {
-    type: String,
-    enum: ['survey', 'technical', 'workplace', 'harassment', 'other'],
-    required: true
-  },
-  relatedSurvey: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Survey'
-  },
   assignedTo: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
   },
-  status: {
-    type: String,
-    enum: ['pending', 'under-review', 'in-progress', 'resolved'],
-    default: 'pending'
+  isAnonymous: {
+    type: Boolean,
+    default: false
   },
-  priority: {
-    type: String,
-    enum: ['low', 'medium', 'high'],
-    default: 'medium'
-  },
-  adminResponse: {
+  resolution: {
     type: String,
     trim: true
   },
-  respondedBy: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User'
-  },
-  respondedAt: {
+  resolvedAt: {
     type: Date
   },
-  messageId: {
+  resolvedBy: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Message'
+    ref: 'User'
   }
 }, {
   timestamps: true
 });
 
 module.exports = mongoose.model('Complaint', complaintSchema);
+
 

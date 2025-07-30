@@ -55,18 +55,20 @@ const EditUser = () => {
   const fetchDepartments = async () => {
     try {
       const response = await axios.get('/api/departments');
-      setDepartments(response.data);
+      setDepartments(Array.isArray(response.data) ? response.data : response.data.departments || []);
     } catch (error) {
       console.error('Error fetching departments:', error);
+      setDepartments([]);
     }
   };
 
   const fetchManagers = async () => {
     try {
       const response = await axios.get('/api/users?role=manager');
-      setManagers(response.data);
+      setManagers(Array.isArray(response.data) ? response.data : response.data.managers || []);
     } catch (error) {
       console.error('Error fetching managers:', error);
+      setManagers([]);
     }
   };
 

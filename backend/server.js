@@ -20,11 +20,13 @@ app.use(express.urlencoded({ extended: true }));
 // Rate limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
+  max: 1000, // allow more requests during development
   standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
   legacyHeaders: false, // Disable the `X-RateLimit-*` headers
 });
 app.use(limiter);
+
+console.log("Starting backend/server.js...");
 
 // Database connection with fallback
 const connectDB = async () => {
@@ -38,8 +40,6 @@ const connectDB = async () => {
     console.log('MongoDB connection failed, using fallback...');
     console.log('Please install MongoDB or set up MongoDB Atlas');
     console.log('For now, the app will run but database operations will fail');
-    
-    // Create a mock connection for development
     mongoose.connection.on('error', () => {
       console.log('Database operations will fail until MongoDB is set up');
     });
@@ -60,10 +60,20 @@ app.use('/api/messages', require('./routes/messages'));
 // Serve static assets if in production
 if (process.env.NODE_ENV === 'production') {
   app.use(express.static(path.join(__dirname, '../frontend/client/build')));
+  
+  // Handle favicon specifically
+  app.get('/favicon.ico', (req, res) => {
+    res.sendFile(path.resolve(__dirname, '../frontend/client/build/favicon.ico'));
+  });
+  
   app.get('*', (req, res) => {
     res.sendFile(path.resolve(__dirname, '../frontend/client/build/index.html'));
   });
+} else {
+  // In development, just ignore favicon requests to avoid 500 errors
+  app.get('/favicon.ico', (req, res) => res.status(204).end());
 }
 
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`)); 
+const PORT = process.env.PORT || 5001;
+console.log("About to start server on port", PORT);
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

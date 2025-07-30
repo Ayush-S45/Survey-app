@@ -15,8 +15,10 @@ router.post('/', [
   body('answers').isArray({ min: 1 }).withMessage('At least one answer is required')
 ], async (req, res) => {
   try {
+    console.log('Received feedback submission:', req.body);
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
+      console.log('Validation errors:', errors.array());
       return res.status(400).json({ errors: errors.array() });
     }
 
@@ -24,6 +26,15 @@ router.post('/', [
 
     // Check if survey exists and is active
     const survey = await Survey.findById(surveyId);
+    console.log('Found survey:', survey ? {
+      id: survey._id,
+      title: survey.title,
+      isActive: survey.isActive,
+      startDate: survey.startDate,
+      endDate: survey.endDate,
+      questionsCount: survey.questions.length
+    } : 'Not found');
+    
     if (!survey) {
       return res.status(404).json({ message: 'Survey not found' });
     }
@@ -34,6 +45,14 @@ router.post('/', [
 
     // Check if survey is within date range
     const now = new Date();
+    console.log('Date check:', {
+      now: now.toISOString(),
+      startDate: survey.startDate,
+      endDate: survey.endDate,
+      isAfterStart: now >= survey.startDate,
+      isBeforeEnd: now <= survey.endDate
+    });
+    
     if (now < survey.startDate || now > survey.endDate) {
       return res.status(400).json({ message: 'Survey is not available at this time' });
     }
@@ -272,6 +291,320 @@ router.get('/export/:surveyId', [auth, authorize('hr', 'admin', 'manager')], asy
     } else {
       res.send('No responses found');
     }
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// @route   GET /api/feedback/export-my-responses
+// @desc    Export user's own survey responses to CSV
+// @access  Private
+router.get('/export-my-responses', auth, async (req, res) => {
+  try {
+    const responses = await Feedback.find({ respondent: req.user.id })
+      .populate('survey', 'title category')
+      .sort({ submittedAt: -1 });
+
+    // Create CSV data
+    const csvData = responses.map(response => {
+      const row = {
+        'Survey Title': response.survey?.title || 'Unknown Survey',
+        'Category': response.survey?.category || 'N/A',
+        'Submitted At': response.submittedAt,
+        'Time Spent (seconds)': response.timeSpent,
+        'Anonymous': response.isAnonymous ? 'Yes' : 'No'
+      };
+
+      // Add answers
+      response.answers.forEach((answer, index) => {
+        row[`Q${index + 1}: ${answer.question}`] = Array.isArray(answer.answer) 
+          ? answer.answer.join(', ') 
+          : answer.answer;
+      });
+
+      return row;
+    });
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="my-survey-responses-${new Date().toISOString().split('T')[0]}.csv"`);
+
+    // Convert to CSV
+    if (csvData.length > 0) {
+      const headers = Object.keys(csvData[0]);
+      const csv = [
+        headers.join(','),
+        ...csvData.map(row => headers.map(header => `"${row[header] || ''}"`).join(','))
+      ].join('\n');
+
+      res.send(csv);
+    } else {
+      res.send('No responses found');
+    }
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// @route   GET /api/feedback/all-responses
+// @desc    Get all survey responses (for HR/Admin/Manager)
+// @access  Private
+router.get('/all-responses', [auth, authorize('hr', 'admin', 'manager')], async (req, res) => {
+  try {
+    const { survey, startDate, endDate, department } = req.query;
+    let query = {};
+
+    // Filter by survey
+    if (survey) {
+      query.survey = survey;
+    }
+
+    // Filter by date range
+    if (startDate || endDate) {
+      query.submittedAt = {};
+      if (startDate) query.submittedAt.$gte = new Date(startDate);
+      if (endDate) query.submittedAt.$lte = new Date(endDate + 'T23:59:59.999Z');
+    }
+
+    const responses = await Feedback.find(query)
+      .populate('survey', 'title category')
+      .populate('respondent', 'firstName lastName email employeeId')
+      .populate('metadata.department', 'name')
+      .sort({ submittedAt: -1 });
+
+    res.json(responses);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// @route   GET /api/feedback/analytics
+// @desc    Get feedback analytics (for HR/Admin/Manager)
+// @access  Private
+router.get('/analytics', [auth, authorize('hr', 'admin', 'manager')], async (req, res) => {
+  try {
+    const { survey, startDate, endDate } = req.query;
+    let query = {};
+
+    // Filter by survey
+    if (survey) {
+      query.survey = survey;
+    }
+
+    // Filter by date range
+    if (startDate || endDate) {
+      query.submittedAt = {};
+      if (startDate) query.submittedAt.$gte = new Date(startDate);
+      if (endDate) query.submittedAt.$lte = new Date(endDate + 'T23:59:59.999Z');
+    }
+
+    // Get total responses
+    const totalResponses = await Feedback.countDocuments(query);
+
+    // Get responses by category
+    const responsesByCategory = await Feedback.aggregate([
+      { $match: query },
+      {
+        $lookup: {
+          from: 'surveys',
+          localField: 'survey',
+          foreignField: '_id',
+          as: 'surveyData'
+        }
+      },
+      { $unwind: '$surveyData' },
+      {
+        $group: {
+          _id: '$surveyData.category',
+          count: { $sum: 1 }
+        }
+      },
+      { $sort: { count: -1 } }
+    ]);
+
+    // Get responses by department
+    const responsesByDepartment = await Feedback.aggregate([
+      { $match: query },
+      {
+        $lookup: {
+          from: 'departments',
+          localField: 'metadata.department',
+          foreignField: '_id',
+          as: 'departmentData'
+        }
+      },
+      { $unwind: '$departmentData' },
+      {
+        $group: {
+          _id: '$departmentData.name',
+          count: { $sum: 1 }
+        }
+      },
+      { $sort: { count: -1 } }
+    ]);
+
+    // Get average response time
+    const avgResponseTime = await Feedback.aggregate([
+      { $match: query },
+      {
+        $group: {
+          _id: null,
+          avgTime: { $avg: '$timeSpent' }
+        }
+      }
+    ]);
+
+    // Get responses over time (last 30 days)
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    
+    const responsesOverTime = await Feedback.aggregate([
+      { 
+        $match: { 
+          ...query,
+          submittedAt: { $gte: thirtyDaysAgo }
+        }
+      },
+      {
+        $group: {
+          _id: {
+            $dateToString: { format: "%Y-%m-%d", date: "$submittedAt" }
+          },
+          count: { $sum: 1 }
+        }
+      },
+      { $sort: { _id: 1 } }
+    ]);
+
+    res.json({
+      totalResponses,
+      responsesByCategory,
+      responsesByDepartment,
+      avgResponseTime: avgResponseTime[0]?.avgTime || 0,
+      responsesOverTime
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// @route   GET /api/feedback/export-all
+// @desc    Export all survey responses to CSV (for HR/Admin/Manager)
+// @access  Private
+router.get('/export-all', [auth, authorize('hr', 'admin', 'manager')], async (req, res) => {
+  try {
+    const { survey, startDate, endDate, department } = req.query;
+    let query = {};
+
+    // Filter by survey
+    if (survey) {
+      query.survey = survey;
+    }
+
+    // Filter by date range
+    if (startDate || endDate) {
+      query.submittedAt = {};
+      if (startDate) query.submittedAt.$gte = new Date(startDate);
+      if (endDate) query.submittedAt.$lte = new Date(endDate + 'T23:59:59.999Z');
+    }
+
+    const responses = await Feedback.find(query)
+      .populate('survey', 'title category')
+      .populate('respondent', 'firstName lastName email employeeId')
+      .populate('metadata.department', 'name')
+      .sort({ submittedAt: -1 });
+
+    // Create CSV data
+    const csvData = responses.map(response => {
+      const row = {
+        'Survey Title': response.survey?.title || 'Unknown Survey',
+        'Category': response.survey?.category || 'N/A',
+        'Submitted At': response.submittedAt,
+        'Time Spent (seconds)': response.timeSpent,
+        'Anonymous': response.isAnonymous ? 'Yes' : 'No'
+      };
+
+      // Add respondent info if not anonymous
+      if (!response.isAnonymous && response.respondent) {
+        row['First Name'] = response.respondent.firstName;
+        row['Last Name'] = response.respondent.lastName;
+        row['Email'] = response.respondent.email;
+        row['Employee ID'] = response.respondent.employeeId;
+      }
+
+      // Add department info
+      if (response.metadata?.department) {
+        row['Department'] = response.metadata.department.name;
+      }
+
+      // Add answers
+      response.answers.forEach((answer, index) => {
+        row[`Q${index + 1}: ${answer.question}`] = Array.isArray(answer.answer) 
+          ? answer.answer.join(', ') 
+          : answer.answer;
+      });
+
+      return row;
+    });
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="all-survey-responses-${new Date().toISOString().split('T')[0]}.csv"`);
+
+    // Convert to CSV
+    if (csvData.length > 0) {
+      const headers = Object.keys(csvData[0]);
+      const csv = [
+        headers.join(','),
+        ...csvData.map(row => headers.map(header => `"${row[header] || ''}"`).join(','))
+      ].join('\n');
+
+      res.send(csv);
+    } else {
+      res.send('No responses found');
+    }
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// @route   GET /api/feedback/my-responses-all
+// @desc    Get all user's feedback responses (no pagination)
+// @access  Private
+router.get('/my-responses-all', auth, async (req, res) => {
+  try {
+    const responses = await Feedback.find({ respondent: req.user.id })
+      .populate('survey', 'title category description questions createdBy')
+      .populate('survey.createdBy', 'firstName lastName')
+      .sort({ submittedAt: -1 });
+
+    res.json(responses);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// @route   GET /api/feedback/check-submission/:surveyId
+// @desc    Check if user has already submitted a specific survey
+// @access  Private
+router.get('/check-submission/:surveyId', auth, async (req, res) => {
+  try {
+    const { surveyId } = req.params;
+    
+    // Check if user has already submitted this survey
+    const existingFeedback = await Feedback.findOne({
+      survey: surveyId,
+      respondent: req.user.id
+    });
+
+    res.json({
+      hasSubmitted: !!existingFeedback,
+      submissionDate: existingFeedback?.submittedAt
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Server error' });

@@ -19,6 +19,7 @@ import Dashboard from './components/dashboard/Dashboard';
 // Survey Components
 import Surveys from './components/surveys/Surveys';
 import SurveyDetail from './components/surveys/SurveyDetail';
+import SurveyResponses from './components/surveys/SurveyResponses';
 import CreateSurvey from './components/surveys/CreateSurvey';
 import DeleteSurvey from './components/surveys/DeleteSurvey';
 import EditSurvey from './components/surveys/EditSurvey';
@@ -38,6 +39,15 @@ import EditUser from './components/users/EditUser';
 import Complaints from './components/complaints/Complaints';
 import Messages from './components/messages/Messages';
 
+// User Components
+import UserDashboard from './components/user/UserDashboard';
+import UserProfile from './components/user/UserProfile';
+import UserSurveys from './components/user/UserSurveys';
+import TakeSurvey from './components/user/TakeSurvey';
+import UserMessages from './components/user/UserMessages';
+import UserFeedback from './components/user/UserFeedback';
+import UserHistory from './components/user/UserHistory';
+
 function App() {
   const { user, loading } = useAuth();
 
@@ -50,7 +60,7 @@ function App() {
   }
 
   return (
-    <Router>
+    <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <div className="App">
         <Toaster position="top-right" />
         <Routes>
@@ -61,15 +71,23 @@ function App() {
           {/* Demo Login and UserPage Demo Routes */}
           <Route path="/demo-login" element={<DemoLogin />} />
           <Route path="/user/:email" element={<UserPage />} />
+          
           {/* Protected Routes */}
           {user && (
             <Route path="/" element={<Layout />}>
-              <Route index element={<Navigate to="/dashboard" />} />
-              <Route path="dashboard" element={<Dashboard />} />
+              <Route path="dashboard" element={user.role === 'admin' || user.role === 'hr' ? <Dashboard /> : <UserDashboard />} />
+              <Route path="user/dashboard" element={<UserDashboard />} />
+              <Route path="user/surveys" element={<UserSurveys />} />
+              <Route path="user/feedback" element={<UserFeedback />} />
+              <Route path="user/messages" element={<UserMessages />} />
+              <Route path="user/profile" element={<UserProfile />} />
+              <Route path="user/history" element={<UserHistory />} />
+              <Route path="user/surveys/:id" element={<TakeSurvey />} />
               <Route path="surveys" element={<Surveys />} />
               <Route path="surveys/create" element={<CreateSurvey />} />
               <Route path="surveys/delete" element={<DeleteSurvey />} />
               <Route path="surveys/:id" element={<SurveyDetail />} />
+              <Route path="surveys/:id/responses" element={<SurveyResponses />} />
               <Route path="surveys/:id/edit" element={<EditSurvey />} />
               <Route path="feedback" element={<Feedback />} />
               <Route path="users" element={<Users />} />

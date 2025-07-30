@@ -20,6 +20,22 @@ router.post('/register', [
   body('role').isIn(['employee', 'manager', 'hr', 'admin']).withMessage('Invalid role')
 ], async (req, res) => {
   try {
+    // Demo mode fallback
+    if (process.env.DEMO_MODE === 'true') {
+      return res.json({
+        token: 'demo-token-' + Date.now(),
+        user: {
+          id: 'demo-' + Date.now(),
+          firstName: req.body.firstName,
+          lastName: req.body.lastName,
+          email: req.body.email,
+          role: req.body.role || 'employee',
+          employeeId: req.body.employeeId,
+          position: req.body.position
+        }
+      });
+    }
+
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({ errors: errors.array() });
@@ -51,7 +67,7 @@ router.post('/register', [
       role: user.role
     };
 
-    const token = jwt.sign(payload, process.env.JWT_SECRET || 'your-secret-key', {
+    const token = jwt.sign(payload, process.env.JWT_SECRET || 'your-secret-key-change-in-production', {
       expiresIn: '7d'
     });
 
@@ -112,7 +128,7 @@ router.post('/login', [
       role: user.role
     };
 
-    const token = jwt.sign(payload, process.env.JWT_SECRET || 'your-secret-key', {
+    const token = jwt.sign(payload, process.env.JWT_SECRET || 'your-secret-key-change-in-production', {
       expiresIn: '7d'
     });
 
@@ -184,6 +200,37 @@ router.post('/change-password', [
     res.json({ message: 'Password changed successfully' });
   } catch (error) {
     console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// @route   POST /api/auth/create-demo-user
+// @desc    Create demo user for testing
+// @access  Public (for demo purposes)
+router.post('/create-demo-user', async (req, res) => {
+  try {
+    // Check if demo user already exists
+    let user = await User.findOne({ email: 'user@gmail.com' });
+    if (user) {
+      return res.json({ message: 'Demo user already exists' });
+    }
+
+    // Create demo user
+    user = new User({
+      firstName: 'Demo',
+      lastName: 'User',
+      email: 'user@gmail.com',
+      password: '123456',
+      employeeId: 'EMP001',
+      position: 'Software Developer',
+      role: 'employee',
+      isActive: true
+    });
+
+    await user.save();
+    res.json({ message: 'Demo user created successfully' });
+  } catch (error) {
+    console.error('Error creating demo user:', error);
     res.status(500).json({ message: 'Server error' });
   }
 });

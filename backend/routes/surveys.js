@@ -63,6 +63,65 @@ router.get('/', auth, async (req, res) => {
   }
 });
 
+// @route   GET /api/surveys/available
+// @desc    Get available surveys for current user
+// @access  Private
+router.get('/available', auth, async (req, res) => {
+  try {
+    const now = new Date();
+    let query = {
+      isActive: true,
+      startDate: { $lte: now },
+      endDate: { $gte: now }
+    };
+
+    // Filter surveys based on user role and department
+    if (req.user.role === 'employee') {
+      query.$or = [
+        { 'targetAudience.departments': req.user.department },
+        { 'targetAudience.roles': { $in: ['employee', req.user.role] } }
+      ];
+    } else if (req.user.role === 'manager') {
+      query.$or = [
+        { 'targetAudience.departments': req.user.department },
+        { 'targetAudience.roles': { $in: ['manager', 'employee'] } }
+      ];
+    }
+    // HR and Admin can see all surveys
+
+    const surveys = await Survey.find(query)
+      .populate('createdBy', 'firstName lastName')
+      .populate('targetAudience.departments', 'name')
+      .sort({ createdAt: -1 });
+
+    // Check which surveys the user has already submitted
+    const submittedSurveys = await Feedback.find({ 
+      respondent: req.user.id 
+    }).distinct('survey');
+
+    console.log('User submitted surveys:', submittedSurveys);
+    console.log('Available surveys:', surveys.map(s => s._id.toString()));
+
+    const surveysWithSubmissionStatus = surveys.map(survey => {
+      const hasSubmitted = submittedSurveys.some(submittedId => 
+        submittedId.toString() === survey._id.toString()
+      );
+      
+      console.log(`Survey ${survey.title}: hasSubmitted = ${hasSubmitted}`);
+      
+      return {
+        ...survey.toObject(),
+        hasSubmitted
+      };
+    });
+
+    res.json(surveysWithSubmissionStatus);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 // @route   GET /api/surveys/:id
 // @desc    Get survey by ID
 // @access  Private
@@ -82,10 +141,15 @@ router.get('/:id', auth, async (req, res) => {
       respondent: req.user.id
     });
 
-    res.json({
-      survey,
-      hasSubmitted: !!existingFeedback
-    });
+    if (existingFeedback) {
+      return res.status(409).json({ 
+        message: 'You have already completed this survey',
+        hasSubmitted: true,
+        submissionDate: existingFeedback.submittedAt
+      });
+    }
+
+    res.json(survey);
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Server error' });
@@ -99,7 +163,7 @@ router.post('/', [
   auth,
   authorize('hr', 'admin', 'manager'),
   body('title').notEmpty().withMessage('Title is required'),
-  body('category').isIn(['project', 'manager', 'workplace', 'general', 'custom']).withMessage('Invalid category'),
+  body('category').isIn(['project', 'manager', 'workplace', 'general', 'training', 'custom']).withMessage('Invalid category'),
   body('questions').isArray({ min: 1 }).withMessage('At least one question is required'),
   body('startDate').isISO8601().withMessage('Valid start date is required'),
   body('endDate').isISO8601().withMessage('Valid end date is required')
@@ -120,13 +184,21 @@ router.post('/', [
       startDate,
       endDate,
       estimatedTime,
-      tags
+      tags,
+      settings
     } = req.body;
 
     // Validate end date is after start date
     if (new Date(endDate) <= new Date(startDate)) {
       return res.status(400).json({ message: 'End date must be after start date' });
     }
+
+    console.log('Creating survey with data:', {
+      title,
+      category,
+      questionsCount: questions.length,
+      settings
+    });
 
     const survey = new Survey({
       title,
@@ -139,10 +211,12 @@ router.post('/', [
       endDate,
       estimatedTime,
       tags,
+      settings,
       createdBy: req.user.id
     });
 
     await survey.save();
+    console.log('Survey created successfully with ID:', survey._id);
 
     res.status(201).json(survey);
   } catch (error) {
@@ -158,7 +232,7 @@ router.put('/:id', [
   auth,
   authorize('hr', 'admin', 'manager'),
   body('title').notEmpty().withMessage('Title is required'),
-  body('category').isIn(['project', 'manager', 'workplace', 'general', 'custom']).withMessage('Invalid category')
+  body('category').isIn(['project', 'manager', 'workplace', 'general', 'training', 'custom']).withMessage('Invalid category')
 ], async (req, res) => {
   try {
     const errors = validationResult(req);

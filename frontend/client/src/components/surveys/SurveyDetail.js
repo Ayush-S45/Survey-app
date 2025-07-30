@@ -14,6 +14,7 @@ const SurveyDetail = () => {
   const [submitting, setSubmitting] = useState(false);
   const [answers, setAnswers] = useState({});
   const [hasSubmitted, setHasSubmitted] = useState(false);
+  const [responseCount, setResponseCount] = useState(0);
 
   useEffect(() => {
     fetchSurvey();
@@ -22,8 +23,24 @@ const SurveyDetail = () => {
   const fetchSurvey = async () => {
     try {
       const response = await axios.get(`/api/surveys/${id}`);
-      setSurvey(response.data.survey);
+      setSurvey(response.data.survey || response.data);
       setHasSubmitted(response.data.hasSubmitted);
+      
+      // Check if there are responses for this survey
+      try {
+        const responsesResponse = await axios.get(`/api/surveys/${id}/responses`);
+        const count = responsesResponse.data.responses?.length || 0;
+        setResponseCount(count);
+        
+        // If there are responses and user is admin/hr, redirect to responses page
+        if (count > 0 && (user.role === 'admin' || user.role === 'hr')) {
+          navigate(`/surveys/${id}/responses`);
+          return;
+        }
+      } catch (error) {
+        console.error('Error fetching responses:', error);
+        setResponseCount(0);
+      }
       
       // Initialize answers object
       const initialAnswers = {};
@@ -211,6 +228,22 @@ const SurveyDetail = () => {
     );
   }
 
+  // Show message for surveys with responses (for non-admin users)
+  if (responseCount > 0 && user.role !== 'admin' && user.role !== 'hr') {
+    return (
+      <div className="text-center py-12">
+        <h3 className="text-lg font-medium text-gray-900 mb-2">Survey Has Responses</h3>
+        <p className="text-gray-500 mb-4">This survey has {responseCount} response{responseCount !== 1 ? 's' : ''}. Contact an administrator to view the responses.</p>
+        <button
+          onClick={() => navigate('/surveys')}
+          className="btn-primary"
+        >
+          Back to Surveys
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       {/* Survey Header */}
@@ -221,7 +254,25 @@ const SurveyDetail = () => {
           <span>Category: {survey.category}</span>
           <span>Questions: {survey.questions.length}</span>
           <span>Estimated time: {survey.estimatedTime || 5} minutes</span>
+          {responseCount > 0 && (
+            <span className="text-blue-600 font-medium">
+              {responseCount} Response{responseCount !== 1 ? 's' : ''}
+            </span>
+          )}
         </div>
+        {responseCount > 0 && (user.role === 'admin' || user.role === 'hr') && (
+          <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <p className="text-sm text-blue-800">
+              <strong>Note:</strong> This survey has {responseCount} response{responseCount !== 1 ? 's' : ''}. 
+              <button
+                onClick={() => navigate(`/surveys/${id}/responses`)}
+                className="ml-2 text-blue-600 hover:text-blue-800 underline"
+              >
+                View all responses
+              </button>
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Survey Form */}

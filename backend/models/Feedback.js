@@ -11,7 +11,7 @@ const answerSchema = new mongoose.Schema({
   },
   questionType: {
     type: String,
-    enum: ['text', 'rating', 'multiple-choice', 'checkbox', 'scale'],
+    enum: ['text', 'textarea', 'multiple', 'checkbox', 'rating', 'scale', 'number', 'date', 'email', 'url'],
     required: true
   }
 });
@@ -23,6 +23,10 @@ const feedbackSchema = new mongoose.Schema({
     required: true
   },
   respondent: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
+  aboutEmployee: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
   },

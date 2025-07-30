@@ -17,10 +17,10 @@ const DeleteSurvey = () => {
   const fetchSurveys = async () => {
     try {
       const response = await axios.get('/api/surveys');
-      setSurveys(response.data);
+      setSurveys(Array.isArray(response.data) ? response.data : response.data.surveys || []);
     } catch (error) {
       console.error('Error fetching surveys:', error);
-      toast.error('Failed to fetch surveys');
+      setSurveys([]);
     } finally {
       setLoading(false);
     }

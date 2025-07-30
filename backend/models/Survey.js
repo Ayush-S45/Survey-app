@@ -7,7 +7,7 @@ const questionSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ['text', 'rating', 'multiple-choice', 'checkbox', 'scale'],
+    enum: ['text', 'textarea', 'multiple', 'checkbox', 'rating', 'scale', 'number', 'date', 'email', 'url'],
     required: true
   },
   options: [{
@@ -16,6 +16,14 @@ const questionSchema = new mongoose.Schema({
   required: {
     type: Boolean,
     default: false
+  },
+  description: {
+    type: String,
+    trim: true
+  },
+  placeholder: {
+    type: String,
+    trim: true
   },
   order: {
     type: Number,
@@ -35,7 +43,7 @@ const surveySchema = new mongoose.Schema({
   },
   category: {
     type: String,
-    enum: ['project', 'manager', 'workplace', 'general', 'custom'],
+    enum: ['project', 'manager', 'workplace', 'general', 'training', 'custom'],
     required: true
   },
   questions: [questionSchema],
@@ -77,7 +85,38 @@ const surveySchema = new mongoose.Schema({
   tags: [{
     type: String,
     trim: true
-  }]
+  }],
+  feedbackType: {
+    type: String,
+    enum: ['general', 'employee-specific'],
+    default: 'general'
+  },
+  targetEmployee: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
+  targetRecipients: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  }],
+  sendToAll: {
+    type: Boolean,
+    default: false
+  },
+  settings: {
+    allowMultipleSubmissions: {
+      type: Boolean,
+      default: false
+    },
+    showProgressBar: {
+      type: Boolean,
+      default: true
+    },
+    randomizeQuestions: {
+      type: Boolean,
+      default: false
+    }
+  }
 }, {
   timestamps: true
 });

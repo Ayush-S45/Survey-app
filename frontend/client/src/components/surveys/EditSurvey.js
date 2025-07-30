@@ -20,7 +20,7 @@ const EditSurvey = () => {
       setError('');
       try {
         const res = await axios.get(`/api/surveys/${id}`);
-        const survey = res.data.survey;
+        const survey = res.data.survey || res.data;
         setTitle(survey.title || '');
         setDescription(survey.description || '');
         setQuestions(

@@ -20,6 +20,8 @@ const Messages = () => {
   const [newMessage, setNewMessage] = useState('');
   const [messageType, setMessageType] = useState('general');
   const [recipient, setRecipient] = useState('');
+  const [selectedRecipients, setSelectedRecipients] = useState([]);
+  const [sendToAll, setSendToAll] = useState(false);
   const [recipients, setRecipients] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -34,18 +36,20 @@ const Messages = () => {
   const fetchSentMessages = async () => {
     try {
       const response = await axios.get('/api/messages');
-      setSentMessages(response.data);
+      setSentMessages(Array.isArray(response.data) ? response.data : response.data.messages || []);
     } catch (error) {
       console.error('Error fetching sent messages:', error);
+      setSentMessages([]);
     }
   };
 
   const fetchReceivedMessages = async () => {
     try {
       const response = await axios.get('/api/messages/inbox');
-      setReceivedMessages(response.data);
+      setReceivedMessages(Array.isArray(response.data) ? response.data : response.data.inbox || []);
     } catch (error) {
       console.error('Error fetching received messages:', error);
+      setReceivedMessages([]);
     } finally {
       setLoading(false);
     }
@@ -54,32 +58,65 @@ const Messages = () => {
   const fetchRecipients = async () => {
     try {
       const response = await axios.get('/api/users/recipients');
-      setRecipients(response.data);
+      setRecipients(Array.isArray(response.data) ? response.data : response.data.recipients || []);
     } catch (error) {
       console.error('Error fetching recipients:', error);
+      setRecipients([]);
     }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!newMessage.trim() || !recipient) return;
+    if (!newMessage.trim() || (!sendToAll && selectedRecipients.length === 0)) {
+      toast.error('Please select recipients or choose "Send to All"');
+      return;
+    }
 
     try {
-      const messageData = {
-        content: newMessage,
-        type: messageType,
-        recipient: recipient
-      };
+      let messageData;
+      
+      if (sendToAll) {
+        // Send to all users
+        messageData = {
+          content: newMessage,
+          type: messageType,
+          sendToAll: true
+        };
+      } else {
+        // Send to selected recipients
+        messageData = {
+          content: newMessage,
+          type: messageType,
+          recipients: selectedRecipients
+        };
+      }
 
       await axios.post('/api/messages', messageData);
       toast.success('Message sent successfully!');
       setNewMessage('');
       setMessageType('general');
-      setRecipient('');
+      setSelectedRecipients([]);
+      setSendToAll(false);
       setShowForm(false);
       fetchSentMessages();
     } catch (error) {
+      console.error('Error sending message:', error);
       toast.error('Failed to send message');
+    }
+  };
+
+  const handleRecipientToggle = (recipientId) => {
+    setSelectedRecipients(prev => 
+      prev.includes(recipientId) 
+        ? prev.filter(id => id !== recipientId)
+        : [...prev, recipientId]
+    );
+  };
+
+  const handleSendToAllToggle = () => {
+    setSendToAll(!sendToAll);
+    if (!sendToAll) {
+      setSelectedRecipients([]); // Clear individual selections
     }
   };
 
@@ -265,25 +302,6 @@ const Messages = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Send To
-                  </label>
-                  <select
-                    value={recipient}
-                    onChange={(e) => setRecipient(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    required
-                  >
-                    <option value="">Select recipient</option>
-                    {recipients.map((person) => (
-                      <option key={person._id} value={person._id}>
-                        {person.firstName} {person.lastName} ({person.role})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
                     Message Type
                   </label>
                   <select
@@ -296,6 +314,45 @@ const Messages = () => {
                     <option value="complaint">Complaint</option>
                     <option value="urgent">Urgent</option>
                   </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Recipients
+                  </label>
+                  <div className="space-y-2">
+                    {/* Send to All Option */}
+                    <label className="flex items-center">
+                      <input
+                        type="checkbox"
+                        checked={sendToAll}
+                        onChange={handleSendToAllToggle}
+                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                      />
+                      <span className="ml-2 text-sm font-medium text-gray-700">
+                        Send to All Users
+                      </span>
+                    </label>
+                    
+                    {/* Individual Recipients */}
+                    {!sendToAll && (
+                      <div className="max-h-32 overflow-y-auto border border-gray-300 rounded-md p-2">
+                        {recipients.map((person) => (
+                          <label key={person._id} className="flex items-center py-1">
+                            <input
+                              type="checkbox"
+                              checked={selectedRecipients.includes(person._id)}
+                              onChange={() => handleRecipientToggle(person._id)}
+                              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                            />
+                            <span className="ml-2 text-sm text-gray-700">
+                              {person.firstName} {person.lastName} ({person.role})
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 

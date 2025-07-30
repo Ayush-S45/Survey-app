@@ -24,10 +24,10 @@ const DeleteUser = () => {
   const fetchUser = async () => {
     try {
       const response = await axios.get(`/api/users/${userId}`);
-      setUser(response.data);
+      setUser(response.data.user || response.data);
     } catch (error) {
-      toast.error('User not found');
-      navigate('/users');
+      console.error('Error fetching user:', error);
+      setUser(null);
     } finally {
       setLoading(false);
     }

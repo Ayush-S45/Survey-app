@@ -61,6 +61,37 @@ router.get('/', [auth, authorize('hr', 'admin', 'manager')], async (req, res) =>
   }
 });
 
+// Add this route to get recipients (all active users) - MUST BE BEFORE /:id route
+router.get('/recipients', auth, async (req, res) => {
+  try {
+    const recipients = await User.find({
+      _id: { $ne: req.user.id }, // Exclude current user
+      isActive: true
+    }).select('firstName lastName role department');
+    
+    res.json(recipients);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Add this route to get complaint recipients (only managers, HR, admin) - MUST BE BEFORE /:id route
+router.get('/complaint-recipients', auth, async (req, res) => {
+  try {
+    const recipients = await User.find({
+      _id: { $ne: req.user.id }, // Exclude current user
+      role: { $in: ['manager', 'hr', 'admin'] },
+      isActive: true
+    }).select('firstName lastName role department');
+    
+    res.json(recipients);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 // @route   GET /api/users/:id
 // @desc    Get user by ID
 // @access  Private (HR, Admin, Manager, Self)
@@ -148,7 +179,8 @@ router.post('/', [
       }
     }
 
-    user = new User({
+    // Clean up empty strings for ObjectId fields
+    const userData = {
       firstName,
       lastName,
       email,
@@ -156,10 +188,20 @@ router.post('/', [
       employeeId,
       position,
       role,
-      department,
-      manager,
       isActive: req.body.isActive !== undefined ? req.body.isActive : true
-    });
+    };
+
+    // Only add department if it's not empty
+    if (department && department.trim() !== '') {
+      userData.department = department;
+    }
+
+    // Only add manager if it's not empty
+    if (manager && manager.trim() !== '') {
+      userData.manager = manager;
+    }
+
+    user = new User(userData);
 
     await user.save();
 
@@ -213,9 +255,22 @@ router.put('/:id', [
       return res.status(403).json({ message: 'Not authorized to change role, department, or manager' });
     }
 
+    // Clean up empty strings for ObjectId fields
+    const updateData = { ...req.body };
+    
+    // Handle empty department string
+    if (updateData.department === '') {
+      updateData.department = undefined;
+    }
+    
+    // Handle empty manager string
+    if (updateData.manager === '') {
+      updateData.manager = undefined;
+    }
+
     const updatedUser = await User.findByIdAndUpdate(
       req.params.id,
-      req.body,
+      updateData,
       { new: true, runValidators: true }
     )
     .select('-password')
@@ -272,21 +327,6 @@ router.get('/departments/:departmentId', [auth, authorize('hr', 'admin', 'manage
       .sort({ firstName: 1, lastName: 1 });
 
     res.json(users);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
-// Add this route to get recipients (admin, hr, managers)
-router.get('/recipients', auth, async (req, res) => {
-  try {
-    const recipients = await User.find({
-      role: { $in: ['admin', 'hr', 'manager'] },
-      isActive: true
-    }).select('firstName lastName role');
-    
-    res.json(recipients);
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Server error' });

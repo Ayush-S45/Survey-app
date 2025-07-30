@@ -19,7 +19,8 @@ const Departments = () => {
   const [formData, setFormData] = useState({
     name: '',
     description: '',
-    manager: ''
+    manager: '',
+    category: 'hr' // default to first allowed value
   });
 
   useEffect(() => {
@@ -40,6 +41,7 @@ const Departments = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    console.log('Submitting department formData:', formData); // Debug log
     try {
       if (editingDept) {
         await axios.put(`/api/departments/${editingDept._id}`, formData);
@@ -48,7 +50,7 @@ const Departments = () => {
         await axios.post('/api/departments', formData);
         toast.success('Department created successfully');
       }
-      setFormData({ name: '', description: '', manager: '' });
+      setFormData({ name: '', description: '', manager: '', category: 'hr' });
       setShowAddForm(false);
       setEditingDept(null);
       fetchDepartments();
@@ -63,7 +65,8 @@ const Departments = () => {
     setFormData({
       name: dept.name,
       description: dept.description || '',
-      manager: dept.manager?._id || ''
+      manager: dept.manager?._id || '',
+      category: dept.category || 'hr'
     });
     setShowAddForm(true);
   };
@@ -82,7 +85,7 @@ const Departments = () => {
   };
 
   const resetForm = () => {
-    setFormData({ name: '', description: '', manager: '' });
+    setFormData({ name: '', description: '', manager: '', category: 'hr' });
     setShowAddForm(false);
     setEditingDept(null);
   };
@@ -139,6 +142,26 @@ const Departments = () => {
                 className="input-field"
                 rows="3"
               />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Category *
+              </label>
+              <select
+                value={formData.category}
+                onChange={e => setFormData({...formData, category: e.target.value})}
+                className="input-field"
+                required
+              >
+                <option value="hr">HR</option>
+                <option value="engineering">Engineering</option>
+                <option value="sales">Sales</option>
+                <option value="marketing">Marketing</option>
+                <option value="finance">Finance</option>
+                <option value="operations">Operations</option>
+                <option value="project">Project</option>
+                <option value="custom">Custom</option>
+              </select>
             </div>
             <div className="flex gap-4">
               <button type="submit" className="btn-primary">
